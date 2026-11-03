@@ -4,9 +4,14 @@
 services:
   app:
     build: ./app
+    volumes:
+      - report-state:/app/data
     ports:
       - "8080:8080"
     environment:
       HELPDESK_URL: ${HELPDESK_URL}
       HELPDESK_TOKEN: ${HELPDESK_TOKEN}
       PORT: "8080"
+
+volumes:
+  report-state:

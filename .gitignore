@@ -4,3 +4,5 @@ __pycache__/
 tmp/
 log/*.log
 .env
+app/data/
+app/tmp/
