@@ -258,6 +258,30 @@ test("GET /api/requests applies filters, sort, and stable opaque cursor pages", 
   assert.equal(fourthBody.next_cursor, null);
 });
 
+test("GET /api/requests.csv exports all filtered rows in order with standard CSV escaping", async (t) => {
+  const { base, service } = await makeTestServer(t);
+  await service.initialize();
+  service.staffById.set(304, { id: 304, name: 'Finance, "Ops"' });
+
+  const response = await fetch(`${base}/api/requests.csv?from=2026-10-01&to=2026-10-31&site_id=11&sort=-id&limit=1&cursor=ignored`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /^text\/csv(?:;|$)/);
+  assert.match(response.headers.get("content-disposition"), /attachment; filename="helpdesk-requests\.csv"/);
+  assert.equal(await response.text(), [
+    "id,site_id,responder_id,responder,response_business_minutes,within_target,completed_late",
+    "3,11,305,Same Name,60,true,",
+    "2,11,,,,,",
+    '1,11,304,"Finance, ""Ops""",30,true,true',
+    "",
+  ].join("\r\n"));
+
+  const filtered = await fetch(`${base}/api/requests.csv?from=2026-10-01&to=2026-10-31&responder_id=304&priority=High&within_target=true&sort=-id&limit=invalid&cursor=not-issued`);
+  assert.equal(filtered.status, 200);
+  const filteredLines = (await filtered.text()).trim().split("\r\n");
+  assert.equal(filteredLines.length, 2);
+  assert.equal(filteredLines[1], '1,11,304,"Finance, ""Ops""",30,true,true');
+});
+
 test("report cache reuses rows across ranges and invalidates when the change feed advances", async () => {
   const service = new ReportingService({
     client: new FakeHelpdeskClient(),

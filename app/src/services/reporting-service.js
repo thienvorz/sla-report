@@ -398,6 +398,11 @@ export class ReportingService {
     return { data, next_cursor: nextCursor };
   }
 
+  async getAllRequests(filters) {
+    const snapshot = await this.reportSnapshot(filters);
+    return sortRows(filterRows(snapshot.report.requests, filters, snapshot.requestsById), filters.sort);
+  }
+
   pruneCursors() {
     const now = this.now();
     for (const [cursor, value] of this.requestCursors) {

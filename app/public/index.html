@@ -34,6 +34,32 @@
       min-width: 6rem;
       padding: 0.4rem 1rem;
     }
+    .primary,
+    #download-csv {
+      align-self: end;
+      margin-top: 1.55rem;
+    }
+
+    #download-csv {
+      background: #fff;
+      border-color: #155eef;
+      color: #155eef;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    #download-csv:hover:not(:disabled) {
+      background: #eef4ff;
+    }
+
+    #download-csv:active:not(:disabled) {
+      background: #dbe8ff;
+    }
+
+    #download-csv:focus-visible,
+    .primary:focus-visible {
+      outline: 2px solid #155eef;
+      outline-offset: 2px;
+    }
   </style>
 </head>
 <body>
@@ -70,6 +96,7 @@
         </select>
       </label>
       <button class="primary" type="submit">Apply filters</button>
+      <button id="download-csv" type="button">Download CSV</button>
     </form>
 
     <p id="status" role="status" aria-live="polite">Choose a date range to browse request lines.</p>
@@ -103,6 +130,7 @@
     const previous = document.getElementById("previous");
     const next = document.getElementById("next");
     const pageLabel = document.getElementById("page-label");
+    const downloadCsv = document.getElementById("download-csv");
     let query = null;
     let pages = [];
     let pageIndex = -1;
@@ -193,6 +221,16 @@
       pages = [];
       pageIndex = -1;
       await fetchPage(undefined, requestGeneration);
+    });
+
+    downloadCsv.addEventListener("click", () => {
+      if (!form.reportValidity()) return;
+      const params = new URLSearchParams();
+      for (const [key, value] of new FormData(form)) {
+        if (key === "limit" || value === "") continue;
+        params.set(key, value);
+      }
+      window.location.assign(`/api/requests.csv?${params.toString()}`);
     });
 
     previous.addEventListener("click", () => {

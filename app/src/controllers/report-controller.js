@@ -62,12 +62,26 @@ function optionalPriority(query) {
   return value;
 }
 
-export function parseRequestListQuery(query) {
+export function parseRequestFilters(query) {
   const range = dateRange(query);
   const sort = oneString(query, "sort") ?? "id";
   if (!new Set(["id", "-id", "response_business_minutes", "-response_business_minutes"]).has(sort)) {
     throw new RequestValidationError("sort is invalid");
   }
+
+  return {
+    ...range,
+    site_id: optionalId(query, "site_id"),
+    responder_id: optionalId(query, "responder_id"),
+    priority: optionalPriority(query),
+    late: optionalBoolean(query, "late"),
+    within_target: optionalBoolean(query, "within_target"),
+    sort,
+  };
+}
+
+export function parseRequestListQuery(query) {
+  const filters = parseRequestFilters(query);
 
   const rawLimit = oneString(query, "limit") ?? "50";
   if (!/^\d+$/.test(rawLimit)) throw new RequestValidationError("limit must be an integer from 1 to 200");
@@ -80,16 +94,34 @@ export function parseRequestListQuery(query) {
   if (cursor !== undefined && cursor.length === 0) throw new RequestValidationError("cursor is invalid");
 
   return {
-    ...range,
-    site_id: optionalId(query, "site_id"),
-    responder_id: optionalId(query, "responder_id"),
-    priority: optionalPriority(query),
-    late: optionalBoolean(query, "late"),
-    within_target: optionalBoolean(query, "within_target"),
-    sort,
+    ...filters,
     limit,
     cursor,
   };
+}
+
+const CSV_COLUMNS = [
+  "id",
+  "site_id",
+  "responder_id",
+  "responder",
+  "response_business_minutes",
+  "within_target",
+  "completed_late",
+];
+
+function csvField(value) {
+  if (value === null || value === undefined) return "";
+  const text = String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function serializeRequestsCsv(rows) {
+  const lines = [CSV_COLUMNS.join(",")];
+  for (const row of rows) {
+    lines.push(CSV_COLUMNS.map((column) => csvField(row[column])).join(","));
+  }
+  return `${lines.join("\r\n")}\r\n`;
 }
 
 function sendError(res, error) {
@@ -106,6 +138,19 @@ export function createReportRouter(reportingService) {
     try {
       const range = dateRange(req.query);
       res.json(await reportingService.getReport(range));
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/requests.csv", async (req, res) => {
+    try {
+      const filters = parseRequestFilters(req.query);
+      const rows = await reportingService.getAllRequests(filters);
+      res
+        .type("text/csv")
+        .attachment("helpdesk-requests.csv")
+        .send(serializeRequestsCsv(rows));
     } catch (error) {
       sendError(res, error);
     }
