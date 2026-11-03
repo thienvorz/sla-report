@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Helpdesk SLA report</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172b4d; background: #f5f7fa; }
+    body { margin: 0; padding: 2rem; }
+    main { max-width: 1100px; margin: 0 auto; }
+    h1 { margin: 0 0 1rem; font-size: 1.8rem; }
+    form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.85rem; align-items: start; padding: 1rem; background: white; border: 1px solid #dfe4ec; border-radius: 8px; }
+    label { display: grid; gap: 0.35rem; font-size: 0.9rem; font-weight: 600; min-width: 0;}
+    input, select, button { box-sizing: border-box;  min-width: 0; min-height: 2.5rem; padding: 0.4rem 0.55rem; border: 1px solid #aeb8c7; border-radius: 5px; background: white; color: inherit; font: inherit; }
+    button { cursor: pointer; font-weight: 650; }
+    button:disabled { cursor: default; opacity: 0.5; }
+    .primary { background: #155eef; border-color: #155eef; color: white; align-self: end; margin-top: 1.55rem;}
+    #status { min-height: 1.5rem; margin: 1rem 0 0.5rem; }
+    .table-wrap { overflow-x: auto; background: white; border: 1px solid #dfe4ec; border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+    th, td { padding: 0.7rem 0.8rem; border-bottom: 1px solid #e7ebf1; text-align: left; }
+    th { background: #f8f9fb; font-size: 0.82rem; }
+    tbody tr:last-child td { border-bottom: 0; }
+    #pagination { display: flex; align-items: center; justify-content: flex-end; gap: 0.7rem; margin-top: 0.8rem; }
+    #page-label { min-width: 5rem; text-align: center; }
+    @media (max-width: 600px) { body { padding: 1rem; } }
+    form input,
+    form select,
+    form button {
+      width: 100%;
+    }
+    #pagination button {
+      width: auto;
+      min-width: 6rem;
+      padding: 0.4rem 1rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Helpdesk SLA report</h1>
+    <form id="filters">
+      <label>From <input type="date" name="from" required></label>
+      <label>To <input type="date" name="to" required></label>
+      <label>Site ID <input type="number" name="site_id" min="1" step="1" inputmode="numeric"></label>
+      <label>Responder ID <input type="number" name="responder_id" min="1" step="1" inputmode="numeric"></label>
+      <label>Priority
+        <select name="priority">
+          <option value="">All priorities</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+          <option value="null">Unprioritized</option>
+        </select>
+      </label>
+      <label>Sort by
+        <select name="sort">
+          <option value="id">Request ID, ascending</option>
+          <option value="-id">Request ID, descending</option>
+          <option value="response_business_minutes">Response time, ascending</option>
+          <option value="-response_business_minutes">Response time, descending</option>
+        </select>
+      </label>
+      <label>Rows per page
+        <select name="limit">
+          <option value="25">25</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+          <option value="200">200</option>
+        </select>
+      </label>
+      <button class="primary" type="submit">Apply filters</button>
+    </form>
+
+    <p id="status" role="status" aria-live="polite">Choose a date range to browse request lines.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Request ID</th>
+            <th scope="col">Site ID</th>
+            <th scope="col">Responder</th>
+            <th scope="col">Responder ID</th>
+            <th scope="col">Business response (min)</th>
+            <th scope="col">Within target</th>
+            <th scope="col">Completed late</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <nav id="pagination" aria-label="Report pages">
+      <button id="previous" type="button" disabled>Previous</button>
+      <span id="page-label">Page 0</span>
+      <button id="next" type="button" disabled>Next</button>
+    </nav>
+  </main>
+
+  <script>
+    const form = document.getElementById("filters");
+    const status = document.getElementById("status");
+    const rows = document.getElementById("rows");
+    const previous = document.getElementById("previous");
+    const next = document.getElementById("next");
+    const pageLabel = document.getElementById("page-label");
+    let query = null;
+    let pages = [];
+    let pageIndex = -1;
+    let generation = 0;
+    let loading = false;
+
+    function displayValue(value) {
+      if (value === null || value === undefined) return "—";
+      if (typeof value === "boolean") return value ? "Yes" : "No";
+      return String(value);
+    }
+
+    function renderPage() {
+      const page = pages[pageIndex];
+      rows.replaceChildren();
+      if (!page || page.data.length === 0) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 7;
+        cell.textContent = "No requests match these filters.";
+        row.append(cell);
+        rows.append(row);
+      } else {
+        for (const item of page.data) {
+          const row = document.createElement("tr");
+          for (const value of [
+            item.id,
+            item.site_id,
+            item.responder,
+            item.responder_id,
+            item.response_business_minutes,
+            item.within_target,
+            item.completed_late,
+          ]) {
+            const cell = document.createElement("td");
+            cell.textContent = displayValue(value);
+            row.append(cell);
+          }
+          rows.append(row);
+        }
+      }
+      pageLabel.textContent = `Page ${pageIndex + 1}`;
+      previous.disabled = loading || pageIndex <= 0;
+      next.disabled = loading || !page || page.next_cursor === null;
+    }
+
+    function setLoading(value) {
+      loading = value;
+      form.querySelector('button[type="submit"]').disabled = value;
+      renderPage();
+    }
+
+    async function fetchPage(cursor, requestGeneration) {
+      const params = new URLSearchParams(query);
+      if (cursor) params.set("cursor", cursor);
+      setLoading(true);
+      status.textContent = "Loading request lines…";
+      try {
+        const response = await fetch(`/api/requests?${params.toString()}`);
+        const body = await response.json();
+        if (requestGeneration !== generation) return;
+        if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+
+        if (cursor === undefined) {
+          pages = [body];
+          pageIndex = 0;
+        } else {
+          pages = pages.slice(0, pageIndex + 1);
+          pages.push(body);
+          pageIndex += 1;
+        }
+        status.textContent = `${body.data.length} request line${body.data.length === 1 ? "" : "s"} on this page.`;
+      } catch (error) {
+        if (requestGeneration === generation) status.textContent = error.message;
+      } finally {
+        if (requestGeneration === generation) setLoading(false);
+      }
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      generation += 1;
+      const requestGeneration = generation;
+      query = new URLSearchParams();
+      for (const [key, value] of new FormData(form)) {
+        if (value !== "") query.set(key, value);
+      }
+      pages = [];
+      pageIndex = -1;
+      await fetchPage(undefined, requestGeneration);
+    });
+
+    previous.addEventListener("click", () => {
+      if (loading || pageIndex <= 0) return;
+      pageIndex -= 1;
+      renderPage();
+      status.textContent = `${pages[pageIndex].data.length} request lines on this page.`;
+    });
+
+    next.addEventListener("click", () => {
+      if (loading || pageIndex < 0) return;
+      const page = pages[pageIndex];
+      if (page.next_cursor === null) return;
+      if (pages[pageIndex + 1]) {
+        pageIndex += 1;
+        renderPage();
+        status.textContent = `${pages[pageIndex].data.length} request lines on this page.`;
+        return;
+      }
+      fetchPage(page.next_cursor, generation);
+    });
+  </script>
+</body>
+</html>
